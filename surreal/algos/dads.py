@@ -67,13 +67,13 @@ class DADS(RLAlgo):
         # Calculate intrinsic rewards.
         # Pull a batch of zs of size batch * (L - 1) (b/c 1 batch is the `z` of the sample (numerator's z)).
         batch_size = len(samples["s"])
-        zs = tf.concat([samples["z"], self.z.sample(batch_size * (self.config.num_denominator_samples_for_ri - 1))])
+        zs = tf.concat([samples["z"], self.z.sample(batch_size * (self.config.num_denominator_samples_for_ri - 1))], axis=0)
         s = tf.nest.map_structure(lambda s: tf.tile(s, [self.config.num_denominator_samples_for_ri] + ([1] * (len(s.shape) - 1))), samples["s"])
         s_ = tf.nest.map_structure(lambda s: tf.tile(s, [self.config.num_denominator_samples_for_ri] + ([1] * (len(s.shape) - 1))), samples["s_"])
         # Single (efficient) forward pass yielding s' likelihoods.
         all_s__llhs = tf.stack(tf.split(self.q(dict(s=s, z=zs), s_, likelihood=True), self.config.num_denominator_samples_for_ri))
         r = tf.math.log(all_s__llhs[0] / tf.reduce_sum(all_s__llhs, axis=0)) + \
-            tf.math.log(self.config.num_denominator_samples_for_ri)
+            tf.math.log(tf.cast(self.config.num_denominator_samples_for_ri, tf.float32))
         # Update RL-algo's policy (same as π) from our batch (using intrinsic rewards).
         self.SAC.update(
             dict(s=samples["s"], z=samples["z"], a=samples["a"], r=r, s_=samples["s_"], t=samples["t"]), time_percentage
