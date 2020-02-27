@@ -31,13 +31,13 @@ class SAC(RLAlgo):
     [1] Soft Actor-Critic Algorithms and Applications - Haarnoja, Zhou, Hartikainen et al. -
         UC Berkeley, Google Brain - Jan 2019.
     """
-    def __init__(self, config, name=None):
+    def __init__(self, config, name=None, existing_pi=None):
         super().__init__(config, name)
         self.preprocessor = Preprocessor.make(config.preprocessor)
         self.s = self.preprocessor(Space.make(config.state_space).with_batch())  # preprocessed states (x)
         self.a = Space.make(config.action_space).with_batch()  # actions (a)
         self.a_soft = self.a.as_one_hot_float_space()  # soft-one-hot actions (if Int elements in action space)
-        self.pi = Network.make(distributions=dict(  # policy (π)
+        self.pi = existing_pi or Network.make(distributions=dict(  # policy (π)
             bounded_distribution_type=config.bounded_distribution_type, discrete_distribution_type="gumbel-softmax",
             gumbel_softmax_temperature=config.gumbel_softmax_temperature
         ), input_space=self.s, output_space=self.a, **config.policy_network)

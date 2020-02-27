@@ -39,8 +39,7 @@ class DADS(RLAlgo):
         self.s = self.preprocessor(config.state_space.with_batch())  # preprocessed states
         self.a = config.action_space.with_batch()  # actions (a)
         self.ri = Float(main_axes=[("Episode Horizon", config.episode_horizon)])  # intrinsic rewards in He
-        self.z = Float(-1.0, 1.0, shape=(config.dim_skill_vectors,), main_axes="B") if \
-            config.discrete_skills is False else Int(config.dim_skill_vectors, main_axes="B")
+        self.z = config.skill_space.with_batch()
         self.s_and_z = Dict(dict(s=self.s, z=self.z), main_axes="B")
         self.pi = Network.make(input_space=self.s_and_z, output_space=self.a, distributions=True,
                                **config.policy_network)
@@ -48,7 +47,7 @@ class DADS(RLAlgo):
                               distributions=dict(type="mixture", num_experts=config.num_q_experts), **config.q_network)
         self.B = FIFOBuffer(Dict(dict(s=self.s, z=self.z, a=self.a, t=bool)), config.episode_buffer_capacity,
                             next_record_setup=dict(s="s_"))
-        self.SAC = SAC(config=config.sac_config, name="SAC-level0")  # Low-level SAC.
+        self.SAC = SAC(config=config.sac_config, name="SAC-level0", existing_pi=self.pi)  # Low-level SAC.
         self.q_optimizer = Optimizer.make(config.supervised_optimizer)  # supervised model optimizer
         self.Lsup = NegLogLikelihoodLoss(distribution=MixtureDistribution(num_experts=config.num_q_experts))
         self.preprocessor.reset()
@@ -75,9 +74,13 @@ class DADS(RLAlgo):
         r = tf.math.log(all_s__llhs[0] / tf.reduce_sum(all_s__llhs, axis=0)) + \
             tf.math.log(tf.cast(self.config.num_denominator_samples_for_ri, tf.float32))
         # Update RL-algo's policy (same as π) from our batch (using intrinsic rewards).
-        self.SAC.update(
-            dict(s=samples["s"], z=samples["z"], a=samples["a"], r=r, s_=samples["s_"], t=samples["t"]), time_percentage
-        )
+        z_exp = tf.expand_dims(samples["z"], axis=-1)
+        self.SAC.update(  # SAC expects a simple pi(a|s) construction, hence the nested dictionaries
+            dict(s=dict(s=samples["s"], z=z_exp),
+                 a=samples["a"],
+                 r=r,
+                 s_=dict(s=samples["s_"], z=z_exp),
+                 t=samples["t"]), time_percentage)
 
     def event_episode_starts(self, event):
         # Initialize z, hz, and he if this hasn't happened yet.
@@ -217,11 +220,12 @@ class DADSConfig(AlgoConfig):
         # Make state/action space.
         state_space = Space.make(state_space)
         action_space = Space.make(action_space)
+        skill_space = Float(-1.0, 1.0, shape=(dim_skill_vectors,), main_axes="B") if \
+            discrete_skills is False else Int(dim_skill_vectors, main_axes="B")
 
-        # Fix SAC config, add correct state- and action-spaces.
         sac_config = SACConfig.make(
             sac_config,
-            state_space=Dict(s=state_space, z=Float(-1.0, 1.0, shape=(dim_skill_vectors,))),
+            state_space=Dict(s=state_space, z=skill_space),
             action_space=action_space,
             # Use no memory. Updates are done from DADS' own buffer.
             memory_capacity=1, memory_batch_size=1,
