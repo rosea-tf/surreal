@@ -53,15 +53,18 @@ class DADS(RLAlgo):
         self.preprocessor.reset()
 
     def update(self, samples, time_percentage):
-        parameters = self.q(dict(s=samples["s"], z=samples["z"]), parameters_only=True)
-
         # Update for K1 (num_steps_per_supervised_update) iterations on same batch.
         weights = self.q.get_weights(as_ref=True)
         s_ = samples["s_"] if self.config.q_predicts_states_diff is False else \
             tf.nest.map_structure(lambda s, s_: s_ - s, samples["s"], samples["s_"])
         for _ in range(self.config.num_steps_per_supervised_update):
-            loss = self.Lsup(parameters, s_)
-            self.q_optimizer.apply_gradients(loss, weights, time_percentage=time_percentage)
+            with tf.GradientTape(watch_accessed_variables=False) as tape:
+                tape.watch(weights)
+                parameters = self.q(dict(s=samples["s"], z=samples["z"]), parameters_only=True)
+                loss = self.Lsup(parameters, s_)
+                loss = tf.reduce_mean(loss)
+                grads_and_weights = list(zip(tape.gradient(loss, weights), weights))
+                self.q_optimizer.apply_gradients(grads_and_weights, time_percentage=time_percentage)
 
         # Calculate intrinsic rewards.
         # Pull a batch of zs of size batch * (L - 1) (b/c 1 batch is the `z` of the sample (numerator's z)).
