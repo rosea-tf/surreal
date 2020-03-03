@@ -51,6 +51,7 @@ class TestDADSShortLearningTasks(unittest.TestCase):
                 "SAC.L_actor",
                 "SAC.L_alpha",
                 "SAC.Ls_critic[0]",
+                "skill_divergence"
             ]
         )
 

@@ -15,6 +15,7 @@
 
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 
 from surreal.algos.rl_algo import RLAlgo
 from surreal.algos.sac import SAC, SACConfig
@@ -52,6 +53,7 @@ class DADS(RLAlgo):
         self.Lsup = NegLogLikelihoodLoss(distribution=MixtureDistribution(num_experts=config.num_q_experts))
         self.preprocessor.reset()
         self.q_loss = 0
+        self.skill_divergence = 0
 
     def update(self, samples, time_percentage):
         # Update for K1 (num_steps_per_supervised_update) iterations on same batch.
@@ -85,6 +87,16 @@ class DADS(RLAlgo):
                  r=r,
                  s_=dict(s=samples["s_"], z=z_exp),
                  t=samples["t"]), time_percentage)
+
+        # a measure of how separated the action dists are, depending on condition z.
+        if self.config.summaries is not None and 'skill_divergence' in self.config.summaries:
+            action_dist = self.pi(dict(s=s, z=zs), distributions_only=True)
+            for _s in range(batch_size):
+                # action_dist_sel = action_dist[_s::batch_size]
+
+                # a rough implementation of average divergence - see Andrea Sgarro, Informational divergence and the dissimilarity of probability distributions. Calcolo, 18, 293–302 (1981)
+                # averaging over all z' samples: D_KL[π(a|s,z) || π(a|s,z')]
+                self.skill_divergence = tf.reduce_mean(tfp.distributions.kl_divergence(action_dist[_s], action_dist[_s+batch_size::batch_size]))
 
     def event_episode_starts(self, event):
         # Initialize z, hz, and he if this hasn't happened yet.
@@ -134,6 +146,7 @@ class DADS(RLAlgo):
         event.env.act(a_)
 
         # Store action and state for next tick.
+        # NOTE: env.state updates on env.act, so s_, a_ is now the LAST (s,a) pair. Next tick, they will be added to self.B
         self.s.assign(s_)
         self.a.assign(a_)
 

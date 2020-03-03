@@ -267,7 +267,7 @@ class Network(Model):
             raise SurrealError("Unsupported input-space type: {}!".format(type(input_component).__name__))
 
     def call(self, inputs, values=None, *, deterministic=None, likelihood=False, log_likelihood=False,
-             parameters_only=False):
+             parameters_only=False, distributions_only=False):
         """
         Computes a forward pass through the neural network, plus (optionally) a distribution sampling step
         (deterministic or stochastic), plus (optionally) a (log)?-likelihood value for given `values` or the drawn
@@ -292,6 +292,9 @@ class Network(Model):
                 log-likelihood (log-prob) for the provided `values` for those output components that have distributions.
 
             parameters_only (bool): Whether to only return the raw distribution parameters (no sampling) for all
+                output components. Only meaningful if `values` is None.
+
+            distributions_only (bool): Whether to only return the tfp distributions (no sampling) for all
                 output components. Only meaningful if `values` is None.
 
         Returns:
@@ -332,6 +335,9 @@ class Network(Model):
                     if distribution is not None else None
                     for i, distribution in enumerate(self.distributions)
                 ]
+                if distributions_only:
+                    return tf.nest.pack_sequence_as(self.output_space.structure, tfp_distributions)
+
                 sample = [
                     distribution._sample(tfp_distributions[i], deterministic=deterministic)
                     if distribution is not None else adapter_outputs[i]
