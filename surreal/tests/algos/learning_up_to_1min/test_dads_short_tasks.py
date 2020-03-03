@@ -65,14 +65,15 @@ class TestDADSShortLearningTasks(unittest.TestCase):
         env.run(ticks=3000, sync=True, render=debug.RenderEnvInLearningTests)
 
         # Check last n episode returns.
-        n = 10
-        mean_last_n = np.mean(env.historic_episodes_returns[-n:])
-        print("Avg return over last {} episodes: {}".format(n, mean_last_n))
-        self.assertTrue(mean_last_n >= 0.3)
+        # TODO this is all just copied from DQN2015!
+        # n = 10
+        # mean_last_n = np.mean(env.historic_episodes_returns[-n:])
+        # print("Avg return over last {} episodes: {}".format(n, mean_last_n))
+        # self.assertTrue(mean_last_n >= 0.3)
 
         # Check learnt Q-function.
-        check(algo.q(
-            np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]])
-        ), [[0.8, -5.0, 0.9, 0.8], [0.8, 1.0, 0.9, 0.9]], decimals=1)  # a=up,down,left,right
+        # check(algo.q(
+        #     np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]])
+        # ), [[0.8, -5.0, 0.9, 0.8], [0.8, 1.0, 0.9, 0.9]], decimals=1)  # a=up,down,left,right
 
         env.terminate()
