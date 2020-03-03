@@ -74,8 +74,8 @@ class DADS(RLAlgo):
         s = tf.nest.map_structure(lambda s: tf.tile(s, [self.config.num_denominator_samples_for_ri] + ([1] * (len(s.shape) - 1))), samples["s"])
         s_ = tf.nest.map_structure(lambda s: tf.tile(s, [self.config.num_denominator_samples_for_ri] + ([1] * (len(s.shape) - 1))), samples["s_"])
         # Single (efficient) forward pass yielding s' likelihoods.
-        all_s__llhs = tf.stack(tf.split(self.q(dict(s=s, z=zs), s_, likelihood=True), self.config.num_denominator_samples_for_ri))
-        r = tf.math.log(all_s__llhs[0] / tf.reduce_sum(all_s__llhs, axis=0)) + \
+        all_s__llhs = tf.stack(tf.split(self.q(dict(s=s, z=zs), s_, log_likelihood=True), self.config.num_denominator_samples_for_ri))
+        r = all_s__llhs[0] - tf.math.reduce_logsumexp(all_s__llhs, axis=0) + \
             tf.math.log(tf.cast(self.config.num_denominator_samples_for_ri, tf.float32))
         # Update RL-algo's policy (same as π) from our batch (using intrinsic rewards).
         z_exp = tf.expand_dims(samples["z"], axis=-1)
