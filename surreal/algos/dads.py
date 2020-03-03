@@ -54,6 +54,7 @@ class DADS(RLAlgo):
         self.preprocessor.reset()
         self.q_loss = 0
         self.skill_divergence = 0
+        self.avg_ri = 0
 
     def update(self, samples, time_percentage):
         # Update for K1 (num_steps_per_supervised_update) iterations on same batch.
@@ -79,6 +80,7 @@ class DADS(RLAlgo):
         all_s__llhs = tf.stack(tf.split(self.q(dict(s=s, z=zs), s_, log_likelihood=True), self.config.num_denominator_samples_for_ri))
         r = all_s__llhs[0] - tf.math.reduce_logsumexp(all_s__llhs, axis=0) + \
             tf.math.log(tf.cast(self.config.num_denominator_samples_for_ri, tf.float32))
+        self.avg_ri = tf.reduce_mean(r)
         # Update RL-algo's policy (same as π) from our batch (using intrinsic rewards).
         z_exp = tf.expand_dims(samples["z"], axis=-1)
         self.SAC.update(  # SAC expects a simple pi(a|s) construction, hence the nested dictionaries
