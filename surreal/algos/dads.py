@@ -51,6 +51,7 @@ class DADS(RLAlgo):
         self.q_optimizer = Optimizer.make(config.supervised_optimizer)  # supervised model optimizer
         self.Lsup = NegLogLikelihoodLoss(distribution=MixtureDistribution(num_experts=config.num_q_experts))
         self.preprocessor.reset()
+        self.q_loss = 0
 
     def update(self, samples, time_percentage):
         # Update for K1 (num_steps_per_supervised_update) iterations on same batch.
@@ -62,8 +63,8 @@ class DADS(RLAlgo):
                 tape.watch(weights)
                 parameters = self.q(dict(s=samples["s"], z=samples["z"]), parameters_only=True)
                 loss = self.Lsup(parameters, s_)
-                loss = tf.reduce_mean(loss)
-                grads_and_weights = list(zip(tape.gradient(loss, weights), weights))
+                self.q_loss = tf.reduce_mean(loss)
+                grads_and_weights = list(zip(tape.gradient(self.q_loss, weights), weights))
                 self.q_optimizer.apply_gradients(grads_and_weights, time_percentage=time_percentage)
 
         # Calculate intrinsic rewards.

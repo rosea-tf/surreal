@@ -45,7 +45,13 @@ class TestDADSShortLearningTasks(unittest.TestCase):
             "{}/../configs/dads_grid_world_4room_learning.json".format(os.path.dirname(__file__)),
             preprocessor=preprocessor,
             state_space=env.actors[0].state_space,
-            action_space=env.actors[0].action_space
+            action_space=env.actors[0].action_space,
+            summaries=[
+                "q_loss",
+                "SAC.L_actor",
+                "SAC.L_alpha",
+                "SAC.Ls_critic[0]",
+            ]
         )
 
         # Create an Algo object.
