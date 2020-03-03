@@ -26,9 +26,9 @@ else:
     SURREAL_HOME = os.path.expanduser('~')
     SURREAL_HOME = os.path.join(SURREAL_HOME, ".surreal/")
 
-PATH_EPISODE_LOGS = SURREAL_HOME + "episodes/"
-PATH_PREPROCESSING_LOGS = SURREAL_HOME + "preprocessing/"
-PATH_SUMMARIES = SURREAL_HOME + "summaries/"
+PATH_EPISODE_LOGS = os.path.join(SURREAL_HOME, "episodes/")
+PATH_PREPROCESSING_LOGS = os.path.join(SURREAL_HOME, "preprocessing/")
+PATH_SUMMARIES = os.path.join(SURREAL_HOME, "summaries/")
 
 # Create dirs if necessary:
 for dir in [SURREAL_HOME, PATH_EPISODE_LOGS, PATH_PREPROCESSING_LOGS, PATH_SUMMARIES]:
