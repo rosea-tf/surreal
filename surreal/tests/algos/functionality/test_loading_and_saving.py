@@ -19,6 +19,7 @@ import tensorflow as tf
 import unittest
 
 from surreal.algos.dqn2015 import DQN2015, DQN2015Config
+from surreal.components import Preprocessor
 from surreal.envs import GridWorld
 
 
@@ -29,21 +30,26 @@ class TestLoadingAndSavingOfAlgos(unittest.TestCase):
     logging.getLogger().setLevel(logging.INFO)
 
     def test_saving_then_loading_to_get_exact_same_algo(self):
-        env = GridWorld("2x2", actors=1)
-        state_space = env.actors[0].state_space.with_batch()
-        action_space = env.actors[0].action_space.with_batch()
+        env = GridWorld("2x2")
 
-        # Create a very simple DQN2015.
-        dqn = DQN2015(config=DQN2015Config.make(
+        # Add the preprocessor.
+        preprocessor = Preprocessor(
+            lambda inputs_: tf.one_hot(inputs_, depth=env.actors[0].state_space.num_categories)
+        )
+        # Create a Config.
+        config = DQN2015Config.make(  # type: DQN2015Config
             "{}/../configs/dqn2015_grid_world_2x2_learning.json".format(os.path.dirname(__file__)),
-            preprocessor=lambda inputs_: tf.one_hot(inputs_, depth=state_space.num_categories),
-            state_space=state_space,
-            action_space=action_space
-        ), name="my-dqn")
+            preprocessor=preprocessor,
+            state_space=env.actors[0].state_space,
+            action_space=env.actors[0].action_space
+        )
+
+        # Create an Algo object.
+        algo = DQN2015(config=config, name="my-dqn")
 
         # Point actor(s) to the algo.
         env.point_all_actors_to_algo(algo)
 
-        dqn.save("test.json")
+        algo.save("test.json")
 
         env.terminate()
