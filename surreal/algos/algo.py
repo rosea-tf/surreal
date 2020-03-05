@@ -17,10 +17,13 @@ from abc import ABCMeta, abstractmethod
 import json
 import tensorflow as tf
 import yaml
+import pickle
+import gzip
 
 from surreal import PATH_SUMMARIES
 from surreal.debug import UseTfSummaries
 from surreal.makeable import Makeable
+from surreal.components.models import Model
 
 
 class Algo(Makeable, metaclass=ABCMeta):
@@ -106,3 +109,51 @@ class Algo(Makeable, metaclass=ABCMeta):
                 json.dump(dict(data=data), file)
             else:
                 yaml.dump(dict(data=data), file)
+
+
+    def get_weights(self, as_ref=False):
+        """
+        Returns weights (as values or as tf.Variable refs) of all Models in this algorithm
+
+        Args:
+            path (str): The path/file to store the Algo's state in.
+
+        Returns:
+            Dict(List[Union[np.ndarray,tf.Variable]]): The weights of each model as numpy values or tf Variables.
+
+        """
+
+        weights = {}
+
+        for name, obj in self.__dict__.items():
+            if isinstance(obj, Model):
+                weights[name] = obj.get_weights(as_ref)
+
+        return weights
+                
+    def save_weights(self, path):
+        """
+        Saves weights of all Models in this algorithm
+
+        Args:
+            path (str): The path/file to store the Algo's state in.
+        """
+        weights = self.get_weights(as_ref=False)
+        
+        with gzip.GzipFile(path, 'wb') as zfile:
+            pickle.dump(weights, zfile)
+
+    def load_weights(self, path):
+        """
+        Loads weights for all Models in this algorithm
+
+        Args:
+            path (str): The path/file to store the Algo's state in
+        """
+
+        with gzip.GzipFile(path, 'rb') as zfile:
+            weight_vals = pickle.load(zfile)
+
+        for name, obj in self.__dict__.items():
+            if isinstance(obj, Model):
+                obj.set_weights(weight_vals[name])
