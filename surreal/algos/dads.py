@@ -54,6 +54,7 @@ class DADS(RLAlgo):
         self.preprocessor.reset()
         self.q_loss = 0
         self.skill_divergence = 0
+        self.skill_uniqueness = 0
         self.avg_ri = 0
 
     def update(self, samples, time_percentage):
@@ -93,12 +94,22 @@ class DADS(RLAlgo):
         # a measure of how separated the action dists are, depending on condition z.
         if self.config.summaries is not None and 'skill_divergence' in self.config.summaries:
             action_dist = self.pi(dict(s=s, z=zs), distributions_only=True)
+            skill_divergences = []
             for _s in range(batch_size):
                 # action_dist_sel = action_dist[_s::batch_size]
 
                 # a rough implementation of average divergence - see Andrea Sgarro, Informational divergence and the dissimilarity of probability distributions. Calcolo, 18, 293–302 (1981)
                 # averaging over all z' samples: D_KL[π(a|s,z) || π(a|s,z')]
-                self.skill_divergence = tf.reduce_mean(tfp.distributions.kl_divergence(action_dist[_s], action_dist[_s+batch_size::batch_size]))
+                skill_divergences.append(tf.reduce_mean(tfp.distributions.kl_divergence(action_dist[_s], action_dist[_s+batch_size::batch_size])))
+            self.skill_divergence = tf.reduce_mean(skill_divergences)
+
+        # count number of unique actions found per state (only makes sense in discrete setting)
+        if self.config.summaries is not None and 'skill_uniqueness' in self.config.summaries:
+            action_dets = self.pi(dict(s=s, z=zs), deterministic=True)
+            skill_uniquenesses = []
+            for _s in range(batch_size):
+                skill_uniquenesses.append(tf.size(tf.unique(action_dets[_s::batch_size])[0]))
+            self.skill_uniqueness = tf.reduce_mean(tf.cast(skill_uniquenesses, tf.float32))
 
     def event_episode_starts(self, event):
         # Initialize z, hz, and he if this hasn't happened yet.
