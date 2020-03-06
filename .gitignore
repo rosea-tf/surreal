@@ -1,5 +1,10 @@
 # Pycharm
 .idea/
+.vscode/
+
+# Tensorflow summaries and saved agents
+summaries
+*.gz
 
 # Unreal stuff
 Saved/
@@ -13,6 +18,7 @@ Intermediate/
 *.lo
 *.o
 *.obj
+*.pyc
 
 # Precompiled Headers
 *.gch

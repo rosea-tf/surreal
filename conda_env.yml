@@ -1,0 +1,20 @@
+name: tf2
+channels:
+  - conda-forge
+dependencies:
+  - numpy
+  - opencv
+  - packaging
+  - pyyaml
+  - pytest
+  - requests
+  - scipy
+  - swig
+  - tensorflow-gpu >=2.*
+  - tensorflow-probability >=0.8
+  - pip
+  - pip:
+    - gym
+    - pygame
+    - box2d
+    - atari-py
