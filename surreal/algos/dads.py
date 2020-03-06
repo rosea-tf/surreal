@@ -22,7 +22,7 @@ from surreal.algos.sac import SAC, SACConfig
 from surreal.components import FIFOBuffer, NegLogLikelihoodLoss, Network, MixtureDistribution, Optimizer, Preprocessor
 from surreal.config import AlgoConfig
 from surreal.spaces import Dict, Float, Int, Space
-
+from surreal.components.helper_functions import iterate_minibatches
 
 class DADS(RLAlgo):
     """
@@ -58,18 +58,23 @@ class DADS(RLAlgo):
         self.avg_ri = 0
 
     def update(self, samples, time_percentage):
-        # Update for K1 (num_steps_per_supervised_update) iterations on same batch.
+        # Update for K1 (num_steps_per_update_q) iterations on same batch.
         weights = self.q.get_weights(as_ref=True)
         s_ = samples["s_"] if self.config.q_predicts_states_diff is False else \
             tf.nest.map_structure(lambda s, s_: s_ - s, samples["s"], samples["s_"])
-        for _ in range(self.config.num_steps_per_supervised_update):
-            with tf.GradientTape(watch_accessed_variables=False) as tape:
-                tape.watch(weights)
-                parameters = self.q(dict(s=samples["s"], z=samples["z"]), parameters_only=True)
-                loss = self.Lsup(parameters, s_)
-                self.q_loss = tf.reduce_mean(loss)
-                grads_and_weights = list(zip(tape.gradient(self.q_loss, weights), weights))
-                self.q_optimizer.apply_gradients(grads_and_weights, time_percentage=time_percentage)
+        for _ in range(self.config.num_steps_per_update_pi):
+            for ms, mz, ms_ in iterate_minibatches(
+                [samples["s"], samples["z"], s_],
+                    self.config.minibatch_size_q):
+                with tf.GradientTape(watch_accessed_variables=False) as tape:
+                    tape.watch(weights)
+                    parameters = self.q(dict(s=ms, z=mz), parameters_only=True)
+                    loss = self.Lsup(parameters, ms_)
+                    self.q_loss = tf.reduce_mean(loss)
+                    grads_and_weights = list(
+                        zip(tape.gradient(self.q_loss, weights), weights))
+                    self.q_optimizer.apply_gradients(
+                        grads_and_weights, time_percentage=time_percentage)
 
         # Calculate intrinsic rewards.
         # Pull a batch of zs of size batch * (L - 1) (b/c 1 batch is the `z` of the sample (numerator's z)).
@@ -83,13 +88,19 @@ class DADS(RLAlgo):
             tf.math.log(tf.cast(self.config.num_denominator_samples_for_ri, tf.float32))
         self.avg_ri = tf.reduce_mean(r)
         # Update RL-algo's policy (same as π) from our batch (using intrinsic rewards).
-        z_exp = tf.expand_dims(samples["z"], axis=-1)
-        self.SAC.update(  # SAC expects a simple pi(a|s) construction, hence the nested dictionaries
-            dict(s=dict(s=samples["s"], z=z_exp),
-                 a=samples["a"],
-                 r=r,
-                 s_=dict(s=samples["s_"], z=z_exp),
-                 t=samples["t"]), time_percentage)
+        z_exp = np.expand_dims(samples["z"], axis=-1)
+
+        for _ in range(self.config.num_steps_per_update_pi):
+            for ms, mz, ma, mr, ms_, mt in iterate_minibatches([
+                    samples["s"], z_exp, samples["a"], r, samples["s_"],
+                    samples["t"]
+            ], self.config.minibatch_size_pi):
+                self.SAC.update(  # SAC expects a simple pi(a|s) construction, hence the nested dictionaries
+                    dict(s=dict(s=ms, z=mz),
+                         a=ma,
+                         r=mr,
+                         s_=dict(s=ms_, z=mz),
+                         t=mt), time_percentage)
 
         # a measure of how separated the action dists are, depending on condition z.
         if self.config.summaries is not None and 'skill_divergence' in self.config.summaries:
@@ -176,6 +187,21 @@ class DADS(RLAlgo):
     #            μ[i] = sum[k=0->K-1](exp(γ renv[k]) / (sum[p=0->K-1](exp(γ renv[p]))) * zk[i])
     #    # return best next plan (z).
 
+    #TODO move somewhere else - delete self.
+    @staticmethod
+    def iterate_minibatches(inputs, minisize, shuffle=False):
+        fullsize = inputs[0].shape[0]
+        assert all([fullsize == other.shape[0] for other in inputs[1:]])
+        if shuffle:
+            indices = np.arange(inputs.shape[0])
+            np.random.shuffle(indices)
+        for start_idx in range(0, fullsize, minisize):
+            end_idx = min(start_idx + minisize, fullsize)
+            if shuffle:
+                excerpt = indices[start_idx:end_idx]
+            else:
+                excerpt = slice(start_idx, end_idx)
+            yield [i[excerpt] for i in inputs]
 
 class DADSConfig(AlgoConfig):
     """
@@ -192,7 +218,10 @@ class DADSConfig(AlgoConfig):
             dim_skill_vectors=10, discrete_skills=False, episode_horizon=200, skill_horizon=None,
             preprocessor=None,
             supervised_optimizer=None,
-            num_steps_per_supervised_update=1,
+            num_steps_per_update_q=1,
+            num_steps_per_update_pi=1,
+            minibatch_size_q=128,
+            minibatch_size_pi=128,
             episode_buffer_capacity=200,
             max_time_steps=None,
             summaries=None
@@ -228,8 +257,15 @@ class DADSConfig(AlgoConfig):
             preprocessor (Preprocessor): The preprocessor (if any) to use.
             supervised_optimizer (Optimizer): The optimizer to use for the supervised (q) model learning task.
 
-            num_steps_per_supervised_update (int): The number of gradient descent iterations per update
+            num_steps_per_update_q (int): The number of full batch gradient descent iterations on (q) per update
                 (each iteration uses the same environment samples).
+
+            num_steps_per_update_pi (int): The number of full batch gradient descent iterations on (pi) per update
+                (each iteration uses the same environment samples).
+
+            minibatch_size_q (int): Full batch from buffer will be broken up into minibatches of this size
+
+            minibatch_size_pi (int): Full batch from buffer will be broken up into minibatches of this size
 
             episode_buffer_capacity (int): The capacity of the episode (experience) FIFOBuffer.
 

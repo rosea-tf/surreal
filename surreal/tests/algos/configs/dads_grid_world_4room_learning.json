@@ -36,7 +36,10 @@
     "learning_rate": 0.0001
   },
 
-  "num_steps_per_supervised_update": 1,
+  "num_steps_per_update_q": 1,
+  "num_steps_per_update_pi": 4,
+  "minibatch_size_q": 128,
+  "minibatch_size_pi": 64,
 
   "episode_horizon": 200,
   "skill_horizon": 200,
