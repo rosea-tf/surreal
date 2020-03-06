@@ -30,7 +30,7 @@ class Categorical(Distribution):
         return tfp.distributions.Categorical(logits=parameters, dtype=util.convert_dtype("int"))
 
     def _sample_deterministic(self, distribution):
-        return tf.argmax(input=distribution.probs, axis=-1, output_type=util.convert_dtype("int"))
+        return tf.argmax(input=distribution.probs_parameter(), axis=-1, output_type=util.convert_dtype("int"))
 
     # IMPORTANT NOTE:
     # Categorical.entropy calculates the Shannon entropy (- SUM(i) pi * log(pi)), but with the natural log (ln),
