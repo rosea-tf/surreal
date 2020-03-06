@@ -58,17 +58,11 @@ class TestTrajectoryProcessor(unittest.TestCase):
 
                 # Boot-strap: If also terminal, with 0, else with last value.
                 if np.all(terminals[i]):
-                    print("Appending boot-strap val 0 at index.", i)
                     baseline_slice.append(0)
                 else:
-                    print("Appending boot-strap val {} at index {}.".format(baseline[i], i))
                     baseline_slice.append(baseline[i])
 
                 adjusted_v = np.asarray(baseline_slice)
-
-                print("adjusted_v", adjusted_v)
-                print("adjusted_v[1:]", adjusted_v[1:])
-                print("adjusted_v[:-1]",  adjusted_v[:-1])
 
                 # +1 because we want to include i-th value.
                 delta = reward[start_index:i + 1] + discount * adjusted_v[1:] - adjusted_v[:-1]
