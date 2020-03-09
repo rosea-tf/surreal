@@ -42,7 +42,7 @@
   "minibatch_size_pi": 64,
 
   "episode_horizon": 200,
-  "skill_horizon": 200,
+  "skill_horizon": 3,
 
   "sac_config": {
     "gamma": 0.99,

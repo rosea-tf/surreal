@@ -32,7 +32,7 @@ class DADS(RLAlgo):
     """
     def __init__(self, config, name=None):
         super().__init__(config, name)
-        self.inference = False  # True=planning mode. False="supervised+intrinsic-reward+model-learning" mode.
+        self.inference = False  # True=planning mode. False="supervised+intrinsic-reward+model-learning" mode. #TODO
         self.he = None  # Current step within He (total episode horizon).
         self.hz = None  # Current step within Hz (repeat horizon for one selected skill)
 
@@ -56,6 +56,7 @@ class DADS(RLAlgo):
         self.skill_divergence = 0
         self.skill_uniqueness = 0
         self.avg_ri = 0
+        self.z_dists = []
 
     def update(self, samples, time_percentage):
         # Update for K1 (num_steps_per_update_q) iterations on same batch.
@@ -139,22 +140,22 @@ class DADS(RLAlgo):
         # Preprocess state.
         s_ = self.preprocessor(event.s_)
 
-        ## If we are in inference mode -> do a planning step (rather than just act).
-        #if self.inference:
-        #    self.he += 1
-        #    if self.he >= self.config.He:  # We have reached the end of the total episode horizon -> reset.
-        #        env.reset()  # Send reset request to env.
-        #        return
-        #    self.plan(env.s)
-        #    # Execute selected skill for Hz steps.
-        #    if self.hz == self.config.Hz - 1:
-        #        zi = self.N.sample()   # ?? ~ N[he/Hz]
-        #        hz = 0  # reset counter
-        #    hz += 1
-        #else:
-        for i in event.actor_slots:
-            if self.hz[i] >= self.config.skill_horizon:
-                self.z.value[i] = self.z.sample()
+        if self.config.max_time_steps is not None and (self.he >= self.config.max_time_steps).any():
+            # We have reached the end of the agent-enforced episode horizon -> reset.
+            event.env.reset()  # Send reset request to env.
+            return
+        self.he += 1 # increment all actors
+
+        # if not planning, we keep z fixed for a whole episode. Otherwise...
+        if self.inference:
+            # TODO currently there's no distinction between skill_horizon for different actors - so this is either all or nothing
+            for i in event.actor_slots:
+                # check whether it's time for a new skill
+                if self.hz[i] > self.config.skill_horizon:
+                    self.hz[i] = 0
+                if self.hz[i] == 0:
+                    self.z.value[i] = self.plan(s_)
+            self.hz += 1
 
         # Add single(!) szas't-tuple to buffer.
         if event.actor_time_steps > 0:
@@ -174,18 +175,78 @@ class DADS(RLAlgo):
         self.s.assign(s_)
         self.a.assign(a_)
 
-    #def plan(self, s0):
-    #    for j in range(R):
-    #        # Sample z (0 to Hp-1) from learnt N.
-    #        zk ~ N[+K@1=K]  # Add a rank K at position 1 (0 is the Hp position).
-    #        # Simulate trajectory using q.
-    #        roll_out()
-    #        # Calculate rewards from reward function (TODO: How to do that if env is external?!!)
-    #        renv = env.get_reward(s0)
-    #        # Update μ.
-    #        for i in range(Hp):
-    #            μ[i] = sum[k=0->K-1](exp(γ renv[k]) / (sum[p=0->K-1](exp(γ renv[p]))) * zk[i])
-    #    # return best next plan (z).
+
+    class Z_Dist:
+        def __init__(self, skill_space):
+            if isinstance(skill_space, Int):
+                self.discrete = True
+                self.n = skill_space.flat_dim_with_categories
+                self.mu = np.ones(self.n) / self.n
+                # self.cov = np.eye(n_a) # TODO? see MPPI
+            else:
+                raise "continuous Z not done yet"
+
+        def sample(self, size=None):
+            if self.discrete:
+                #TODO - categorical?
+                # return np.random.multivariate_normal(self.mu, self.cov, size),
+                return np.random.choice(self.n, size=size, p=self.mu)
+
+        def update(self, new_mu):
+            self.mu = new_mu
+
+
+    def plan(self, s_0):
+        """
+        MPPI (not finished yet)
+        """
+
+        if self.config.reward_function is None:
+            # planning isn't going to help us
+            return self.z.sample()
+
+        remaining_horizon = self.config.plan_horizon
+        if self.config.max_time_steps:
+            remaining_horizon = min(remaining_horizon, self.config.max_time_steps - self.he)
+
+        # fill out missing distributions for the path ahead of us
+        while len(self.z_dists) < remaining_horizon:
+            self.z_dists.append(self.Z_Dist(self.config.skill_space))
+
+        reward = np.empty(self.config.mppi_num_samples)  # i.e. total return
+        terminal = np.empty(self.config.mppi_num_samples, dtype=bool)
+
+        # refine over R (num_iters) iterations
+        for j in range(self.config.mppi_num_iters):
+            reward.fill(0)
+            terminal.fill(False)
+            # Sample K (num_samples) plans of length Hp (len(p_d))
+            z_seq = [
+                zd.sample(self.config.mppi_num_samples)
+                for zd in self.z_dists
+            ]
+
+            s_i = np.broadcast_to(s_0, [self.config.mppi_num_samples] + s_0.shape[1:])  # (K, state_dim)
+
+            for z in z_seq:
+                # evolve states along each of the K trajectories
+                s_i = self.q(dict(s=s_i, z=z))  # (K, state_dim)
+                r, t = self.config.reward_function(s_i) # (K,)
+                reward += np.where(terminal, 0, r)
+                terminal = np.logical_or(terminal, t)
+
+            # update parameters
+            total_sum = np.sum(np.exp(self.config.mppi_gamma * reward))
+            for z, zd in zip(z_seq, self.z_dists):
+                z_ = np.eye(self.config.skill_space.flat_dim_with_categories)[z]
+                new_mu = np.sum(
+                    np.exp(self.config.mppi_gamma * reward)[:, None] *
+                    z_ / total_sum, axis=0)
+                zd.update(new_mu) #TODO smoothing
+
+        # finally, sample a skill for the first planning step
+        return self.z_dists[0].sample()
+
 
 class DADSConfig(AlgoConfig):
     """
@@ -199,7 +260,9 @@ class DADSConfig(AlgoConfig):
             num_q_experts=4,  # 4 used in paper.
             q_predicts_states_diff=False,
             num_denominator_samples_for_ri=250,  # 50-500 used in paper
-            dim_skill_vectors=10, discrete_skills=False, episode_horizon=200, skill_horizon=None,
+            dim_skill_vectors=10, discrete_skills=False, episode_horizon=200,
+            skill_horizon=10,  # A.5 in paper
+            plan_horizon=1,  # A.5 in paper
             preprocessor=None,
             supervised_optimizer=None,
             num_steps_per_update_q=1,
@@ -208,6 +271,10 @@ class DADSConfig(AlgoConfig):
             minibatch_size_pi=128,
             episode_buffer_capacity=200,
             max_time_steps=None,
+            mppi_num_iters=10,  # from appendix A.5 in paper
+            mppi_num_samples=100,  # "between 1 and 200"
+            mppi_gamma=10,  # from appendix A.5 in paper
+            reward_function=None,
             summaries=None
     ):
         """

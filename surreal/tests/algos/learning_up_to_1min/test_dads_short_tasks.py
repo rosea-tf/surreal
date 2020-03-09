@@ -40,12 +40,30 @@ class TestDADSShortLearningTasks(unittest.TestCase):
         preprocessor = Preprocessor(
             lambda inputs_: tf.one_hot(inputs_, depth=env.actors[0].state_space.num_categories)
         )
+
+        # add a reward function for gridworld
+        # @staticmethod
+        def reward_function(state):
+            """
+            state given as (b,121) array
+            returns: reward, terminal
+            """
+            state_ = np.argmax(state, axis=-1)
+            state_xy = np.stack(env.processes[0][0]._get_x_y(state_), axis=-1)[:, None, :] # n_actors x 1 x 2
+            goal_xy = np.stack([env.processes[0][0].goal_x, env.processes[0][0].goal_y], axis=-1) # n_goals x 2
+            min_manhattan_dist = np.min(
+                np.sum(np.abs(goal_xy - state_xy), axis=2) # n_actors x n_goals
+                , axis=1) # n_actors
+            return -1 * min_manhattan_dist, min_manhattan_dist == 0
+
         # Create a Config.
         config = DADSConfig.make(
             "{}/../configs/dads_grid_world_4room_learning.json".format(os.path.dirname(__file__)),
             preprocessor=preprocessor,
             state_space=env.actors[0].state_space,
             action_space=env.actors[0].action_space,
+            reward_function=reward_function,
+            plan_horizon=2, #TODO
             summaries=[
                 "q_loss",
                 "SAC.L_actor",
@@ -59,6 +77,7 @@ class TestDADSShortLearningTasks(unittest.TestCase):
 
         # Create an Algo object.
         algo = DADS(config=config, name="my-dads")
+        # algo.inference = True
 
         # Point actor(s) to the algo.
         env.point_all_actors_to_algo(algo)
