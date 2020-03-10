@@ -35,7 +35,7 @@ class Env(Makeable, metaclass=ABCMeta):
     """
     An Env class used to run experiment-based RL.
     """
-    def __init__(self, actors=None, render=False, action_map=None, reward_clipping=None):
+    def __init__(self, actors=None, render=False, action_map=None, reward_clipping=None, ):
         """
         Args:
             actors (Union[int,List[Actor]]): The number of Actors to create and add to this env or a list of
@@ -117,7 +117,7 @@ class Env(Makeable, metaclass=ABCMeta):
                 ret[algo_name].append(i)
         return {k: np.array(v) for k, v in ret.items()}
 
-    def run(self, ticks=None, actor_time_steps=None, episodes=None, sync=True, render=None):
+    def run(self, ticks=None, actor_time_steps=None, episodes=None, sync=True, render=None, max_episode_length=None):
         """
         Runs this Env for n time_steps (or infinitely if `time_steps` is not given or 0).
 
@@ -134,13 +134,13 @@ class Env(Makeable, metaclass=ABCMeta):
 
         self.running = True
         if sync is True:
-            self._run(ticks, actor_time_steps, episodes, render=render)
+            self._run(ticks, actor_time_steps, episodes, render=render, max_episode_length=max_episode_length)
         else:
             # TODO: What if `run` is called, while this env is still running?
-            self.run_thread = threading.Thread(target=self._run, args=[ticks, actor_time_steps, episodes])
+            self.run_thread = threading.Thread(target=self._run, args=[ticks, actor_time_steps, episodes, max_episode_length])
             self.run_thread.run()
 
-    def _run(self, ticks=None, actor_time_steps=None, episodes_x=None, render=None):
+    def _run(self, ticks=None, actor_time_steps=None, episodes_x=None, render=None, max_episode_length=None):
         """
         The actual loop scaffold implementation (to run in thread or synchronously).
 
@@ -156,6 +156,7 @@ class Env(Makeable, metaclass=ABCMeta):
         self.max_ticks = (actor_time_steps / len(self.actors)) if actor_time_steps is not None else \
             (ticks or float("inf"))
         self.max_time_steps = self.max_ticks * len(self.actors)
+        self.max_episode_length = max_episode_length
         #self.max_episodes = episodes if episodes is not None else float("inf")
 
         # Build a algo-map for faster non-repetitive lookup.
@@ -176,7 +177,9 @@ class Env(Makeable, metaclass=ABCMeta):
                 algo = quick_algo_map[algo_name]
                 # If episode ended, send new-episode event to algo.
                 for slot in actor_slots:
-                    if self.terminal[slot]:
+                    if self.terminal[slot] or \
+                        (self.max_episode_length and self.episodes_time_steps[slot] >= self.max_episode_length): 
+                        #TODO this is not the right location for this, but in single-actor setting it doesn't matter
                         event = RLAlgoEvent(self, actor_slots, self.time_steps_algos[algo_name], current_actor_slot=slot)
                         if tick > 0:
                             self.num_episodes += 1

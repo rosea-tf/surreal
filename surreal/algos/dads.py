@@ -57,6 +57,11 @@ class DADS(RLAlgo):
         self.skill_uniqueness = 0
         self.avg_ri = 0
         self.z_dists = []
+        #TODO
+        self.end_state_by_skill = {
+            k: []
+            for k in range(self.config.dim_skill_vectors)
+        }
 
     def update(self, samples, time_percentage):
         # Update for K1 (num_steps_per_update_q) iterations on same batch.
@@ -129,21 +134,32 @@ class DADS(RLAlgo):
             self.z.assign(self.z.zeros(len(event.actor_slots)))
             self.hz = np.zeros(len(event.actor_slots), dtype=np.int32)
             self.he = np.zeros(len(event.actor_slots), dtype=np.int32)
+        else: #TODO this is a hack.
+            self.end_state_by_skill[self.z.value[0]].append(
+                tuple([int(i) for i in event.env.processes[0][0]._get_x_y(np.argmax(self.s.value))]))
         # Sample new z at the trajectory's batch position.
         if self.inference is False:
             self.z.value[event.current_actor_slot] = self.z.sample()  # Sample a new skill from Space z and store it in z (assume uniform).
         # Reset preprocessor at actor's batch position.
         self.preprocessor.reset(batch_position=event.current_actor_slot)
+        self.he.fill(0)
+        self.hz.fill(0)
 
     # Fill the buffer with M samples.
     def event_tick(self, event):
         # Preprocess state.
         s_ = self.preprocessor(event.s_)
 
-        if self.config.max_time_steps is not None and (self.he >= self.config.max_time_steps).any():
-            # We have reached the end of the agent-enforced episode horizon -> reset.
-            event.env.reset()  # Send reset request to env.
-            return
+        # if self.config.episode_horizon is not None and (self.he >= self.config.episode_horizon).any():
+        #     # We have reached the end of the agent-enforced episode horizon -> reset.
+        #     event.env.reset_all()  # Send reset request to env.
+        #     return
+
+        # if self.config.max_time_steps is not None and (self.he >= self.config.max_time_steps).any():
+        #     # We have reached the end of the agent-enforced episode horizon -> reset.
+        #     event.env.terminate()  # Send terminate request to env.
+        #     return
+
         self.he += 1 # increment all actors
 
         # if not planning, we keep z fixed for a whole episode. Otherwise...

@@ -33,15 +33,15 @@
 
   "supervised_optimizer": {
     "type": "adam",
-    "learning_rate": 0.0001
+    "learning_rate": 0.0003
   },
 
-  "num_steps_per_update_q": 1,
-  "num_steps_per_update_pi": 4,
+  "num_steps_per_update_q": 3,
+  "num_steps_per_update_pi": 6,
   "minibatch_size_q": 128,
   "minibatch_size_pi": 64,
 
-  "episode_horizon": 200,
+  "episode_horizon": 20,
   "skill_horizon": 3,
 
   "sac_config": {
@@ -67,12 +67,12 @@
 
     "default_optimizer": {
       "type": "adam",
-      "learning_rate": 0.0001
+      "learning_rate": 0.0003
     },
 
     "q_optimizer": {
       "type": "adam",
-      "learning_rate": 0.005
+      "learning_rate": 0.0003
     },
 
     "time_unit": "time_step",
