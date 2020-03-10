@@ -17,7 +17,7 @@ import logging
 import json
 import os
 
-from surreal import SURREAL_HOME
+from surreal import SURREAL_HOME, args
 
 """
 Global debug settings module. Reads settings from optional ~/.surreal/debug.json file, otherwise assigns default values
@@ -65,7 +65,7 @@ IfRenderingRenderMaximallyNActors = DEBUG_SETTINGS.pop("IfRenderingRenderMaximal
 
 # Tf2.0 Summaries.
 # ----------------
-UseTfSummaries = DEBUG_SETTINGS.pop("UseTfSummaries", False)
+UseTfSummaries = DEBUG_SETTINGS.pop("UseTfSummaries", args.summarise)
 
 # Make sure nothing unknown is left in json struct.
 assert not DEBUG_SETTINGS, "ERROR: Unknown debug settings found in debug.json file: {}".format(DEBUG_SETTINGS)

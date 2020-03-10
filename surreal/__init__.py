@@ -14,13 +14,19 @@
 # ==============================================================================
 
 import os
+import argparse
 
 from surreal.version import __version__
 from surreal.makeable import Makeable
 from surreal.config import Config
 
-
-if "SURREAL_HOME" in os.environ:
+parser = argparse.ArgumentParser()
+parser.add_argument("--logdir")
+parser.add_argument('--summarise', action='store_true')
+args, _ = parser.parse_known_args()
+if args.logdir:
+    SURREAL_HOME = args.logdir
+elif "SURREAL_HOME" in os.environ:
     SURREAL_HOME = os.environ.get("SURREAL_HOME")
 else:
     SURREAL_HOME = os.path.expanduser('~')
@@ -39,5 +45,6 @@ for dir in [SURREAL_HOME, PATH_EPISODE_LOGS, PATH_PREPROCESSING_LOGS, PATH_SUMMA
             pass
 
 __all__ = ["__version__", "Config", "Makeable",
-           "SURREAL_HOME", "PATH_EPISODE_LOGS", "PATH_PREPROCESSING_LOGS", "PATH_SUMMARIES"
+           "SURREAL_HOME", "PATH_EPISODE_LOGS", "PATH_PREPROCESSING_LOGS", "PATH_SUMMARIES",
+           "args"
            ]
