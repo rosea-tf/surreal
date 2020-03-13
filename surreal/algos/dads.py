@@ -54,14 +54,13 @@ class DADS(RLAlgo):
         self.preprocessor.reset()
         self.q_loss = 0
         self.skill_divergence = 0
-        self.skill_uniqueness = 0
-        self.avg_ri = 0
+        self.ri = 0  # intrinsic rewards
         self.z_dists = []
-        #TODO
-        self.end_state_by_skill = {
-            k: []
-            for k in range(self.config.dim_skill_vectors)
-        }
+        
+        if self.config.callbacks:
+            if "__init__" in self.config.callbacks:
+                for fn in self.config.callbacks["__init__"]:
+                    fn(self, config)
 
     def update(self, samples, time_percentage):
         # Update for K1 (num_steps_per_update_q) iterations on same batch.
@@ -120,13 +119,6 @@ class DADS(RLAlgo):
                 skill_divergences.append(tf.reduce_mean(tfp.distributions.kl_divergence(action_dist[_s], action_dist[_s+batch_size::batch_size])))
             self.skill_divergence = tf.reduce_mean(skill_divergences)
 
-        # count number of unique actions found per state (only makes sense in discrete setting)
-        if self.config.summaries is not None and 'skill_uniqueness' in self.config.summaries:
-            action_dets = self.pi(dict(s=s, z=zs), deterministic=True)
-            skill_uniquenesses = []
-            for _s in range(batch_size):
-                skill_uniquenesses.append(tf.size(tf.unique(action_dets[_s::batch_size])[0]))
-            self.skill_uniqueness = tf.reduce_mean(tf.cast(skill_uniquenesses, tf.float32))
 
     def event_episode_starts(self, event):
         # Initialize z, hz, and he if this hasn't happened yet.
@@ -134,9 +126,7 @@ class DADS(RLAlgo):
             self.z.assign(self.z.zeros(len(event.actor_slots)))
             self.hz = np.zeros(len(event.actor_slots), dtype=np.int32)
             self.he = np.zeros(len(event.actor_slots), dtype=np.int32)
-        else: #TODO this is a hack.
-            self.end_state_by_skill[self.z.value[0]].append(
-                tuple([int(i) for i in event.env.processes[0][0]._get_x_y(np.argmax(self.s.value))]))
+
         # Sample new z at the trajectory's batch position.
         if self.inference is False:
             self.z.value[event.current_actor_slot] = self.z.sample()  # Sample a new skill from Space z and store it in z (assume uniform).
@@ -145,6 +135,12 @@ class DADS(RLAlgo):
         self.he.fill(0)
         self.hz.fill(0)
         event.env.reset_all()
+
+        if self.config.callbacks:
+            if "event_episode_starts" in self.config.callbacks:
+                for fn in self.config.callbacks["event_episode_starts"]:
+                    fn(self, event)
+
 
     # Fill the buffer with M samples.
     def event_tick(self, event):
@@ -191,6 +187,11 @@ class DADS(RLAlgo):
         # NOTE: env.state updates on env.act, so s_, a_ is now the LAST (s,a) pair. Next tick, they will be added to self.B
         self.s.assign(s_)
         self.a.assign(a_)
+
+        if self.config.callbacks:
+            if "event_tick" in self.config.callbacks:
+                for fn in self.config.callbacks["event_tick"]:
+                    fn(self, event)
 
 
     class Z_Dist:
@@ -292,7 +293,8 @@ class DADSConfig(AlgoConfig):
             mppi_num_samples=100,  # "between 1 and 200"
             mppi_gamma=10,  # from appendix A.5 in paper
             reward_function=None,
-            summaries=None
+            summaries=None,
+            callbacks=None,
     ):
         """
         Args:
