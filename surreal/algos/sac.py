@@ -200,6 +200,7 @@ class SACLoss(LossFunction):
 
         loss_alpha = 0.0
         tape_alpha = None
+        log_pi = 0
         if config.optimize_alpha is True:
             with tf.GradientTape(watch_accessed_variables=False) as tape_alpha:
                 tape_alpha.watch(alpha)
