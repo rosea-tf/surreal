@@ -144,6 +144,7 @@ class DADS(RLAlgo):
         self.preprocessor.reset(batch_position=event.current_actor_slot)
         self.he.fill(0)
         self.hz.fill(0)
+        event.env.reset_all()
 
     # Fill the buffer with M samples.
     def event_tick(self, event):
