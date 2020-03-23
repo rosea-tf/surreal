@@ -27,13 +27,19 @@ from surreal import SURREAL_HOME, parser
 
 
 parser.add_argument('--config', default="surreal/tests/algos/configs/dads_grid_world_4room_learning.json")
+parser.add_argument('--action_type', default="udlr")
+
 args, _ = parser.parse_known_args()
 
 logging.getLogger().setLevel(logging.INFO)
 
 def test_dads_learning_on_grid_world_4room():
     # Create an Env object.
-    env = GridWorld("4-room", state_representation="xy")
+    env = GridWorld(
+        "4-room",
+        state_representation="xy",
+        action_type=args.action_type
+    )
 
     # Add the preprocessor.
     preprocessor = Preprocessor(

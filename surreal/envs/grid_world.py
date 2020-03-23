@@ -20,7 +20,7 @@ import os
 import random
 import time
 
-from surreal.spaces import Int, Bool, Dict
+from surreal.spaces import Int, Bool, Dict, Float
 from surreal.envs.local_env import LocalEnv, LocalEnvProcess
 
 
@@ -57,7 +57,6 @@ class GridWorld(LocalEnv):
     'F' : fire (usually causing negative reward, but can be jumped)
     'G' : goal state (terminates episode)
 
-    TODO: Create an option to introduce a continuous action space.
     """
     # Some built-in maps.
     MAPS = {
@@ -109,9 +108,11 @@ class GridWorld(LocalEnv):
 
             save_mode (bool): Whether to replace holes (H) with walls (W). Default: False.
 
-            action_type (str): Which action space to use. Chose between "udlr" (up, down, left, right), which is a
-                discrete action space and "ftj" (forward + turn + jump), which is a container multi-discrete
-                action space. "ftjb" is the same as "ftj", except that sub-action "jump" is a boolean.
+            action_type (str): Which action space to use: 
+                - "udlr" (up, down, left, right), which is a discrete action space
+                - "ftj" (forward + turn + jump), which is a container multi-discrete action space.
+                - "ftjb" is the same as "ftj", except that sub-action "jump" is a boolean.
+                - "2dc", a 2D continuous action space
 
             reward_function (str): One of
                 sparse: hole=-5, fire=-3, goal=1, all other steps=-0.1
@@ -141,7 +142,6 @@ class GridWorld(LocalEnv):
         n_row, n_col = world.shape
 
         # Figure out our state space.
-        assert state_representation in ["discrete", "xy", "xy+orientation", "camera"]
         # Discrete states (single int from 0 to n).
         if state_representation == "discrete":
             state_space = Int(n_row * n_col)
@@ -152,13 +152,26 @@ class GridWorld(LocalEnv):
         elif state_representation == "xy+orientation":
             state_space = Int(low=(0, 0, 0, 0), high=(n_col, n_row, 1, 1))
         # Camera outputting a 2D color image of the world.
-        else:
+        elif state_representation == "camera":
             state_space = Int(0, 255, shape=(n_row, n_col, 3))
+        else:
+            raise ValueError(f"unknown state_representation: {state_representation}")
 
         # Specify the actual action space.
-        action_space = Int(4) if action_type == "udlr" else Dict(dict(
-            forward=Int(3), turn=Int(3), jump=(Int(2) if action_type == "ftj" else Bool())
-        ))
+        if action_type == "udlr":
+            action_space = Int(4)
+        elif action_type == "ftj":
+            action_space = Dict(dict(
+            forward=Int(3), turn=Int(3), jump=Int(2)))
+        elif action_type == "ftjb":
+            action_space = Dict(dict(
+            forward=Int(3), turn=Int(3), jump=Bool()))
+        elif action_type == "2dc":
+            action_space = Float(shape=(2,))
+        else:
+            raise ValueError(f"unknown action_type: {action_type}")
+
+
         # Call super.
         super().__init__(
             actors=actors, num_cores=num_cores,
@@ -275,6 +288,9 @@ class GridWorldEnvProcess(LocalEnvProcess):
         # Up, down, left, right actions.
         if self.action_type == "udlr":
             moves = actions
+        elif self.action_type == "2dc":
+            # non-determinism here
+            moves = self._translate_2d_action(actions)
         else:
             actions = self._translate_action(actions)
             # Turn around (0 (left turn), 1 (no turn), 2 (right turn)).
@@ -586,6 +602,29 @@ class GridWorldEnvProcess(LocalEnvProcess):
             else:
                 converted_actions["jump"] = 1 if self.action_type == "ftj" else True
             return converted_actions
+
+    @staticmethod
+    def gaussian(x, mu, sig):
+        return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
+
+    def _translate_2d_action(self, actions):
+        move_probs = np.array([
+            self.gaussian(actions[:, 1], -1, 0.5),  #up
+            self.gaussian(actions[:, 0], 1, 0.5),  #right
+            self.gaussian(actions[:, 1], 1, 0.5),  #down
+            self.gaussian(actions[:, 0], -1, 0.5),  #left
+        ]).T
+
+        # NaN protection
+        move_probs += 0.0001
+        
+        # normalise probabilities
+        move_probs /= np.sum(move_probs, axis=1)
+
+        return np.array([
+            np.random.choice(len(mp_actor), p=mp_actor)
+            for mp_actor in move_probs
+        ])
 
     # png Render helper methods.
     def _grid_to_surface(self):
