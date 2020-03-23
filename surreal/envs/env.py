@@ -362,7 +362,13 @@ class Env(Makeable, metaclass=ABCMeta):
             return
 
         with algo.summary_writer.as_default():
-            for summary in algo.config.summaries:
+
+            if hasattr(algo, 'summaries_thistick'):
+                summaries = algo.summaries_thistick
+            else:
+                summaries = algo.config.summaries
+
+            for summary in summaries:
                 name = code_ = summary
                 # Tuple/List of 2: Summary name + prop.
                 if isinstance(summary, (list, tuple)) and len(summary) == 2:
@@ -384,6 +390,8 @@ class Env(Makeable, metaclass=ABCMeta):
 
                 result = l_dict["result"]
                 # Array or Tensor?
+                if result is None:
+                    continue
                 if isinstance(result, (np.ndarray, tf.Tensor)):
                     if result.shape == ():
                         tf.summary.scalar(name, result, step=self.tick)

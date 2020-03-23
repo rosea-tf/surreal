@@ -54,8 +54,9 @@ class DADS(RLAlgo):
         self.preprocessor.reset()
         self.q_loss = 0
         self.skill_divergence = 0
-        self.ri = 0  # intrinsic rewards
+        self.ri = None # intrinsic rewards
         self.z_dists = []
+        self.summaries_thistick = []
         
         if self.config.callbacks:
             if "__init__" in self.config.callbacks:
@@ -176,6 +177,11 @@ class DADS(RLAlgo):
             if self.B.size == self.B.capacity:
                 self.update(self.B.flush(), time_percentage=event.actor_time_steps /
                                                             (self.config.max_time_steps or event.env.max_time_steps))
+                self.summaries_thistick = self.config.summaries
+            else:
+                # so that loss etc is not tracked on non-update steps (TODO: re-enable if/when we track actions/plans?)
+                self.summaries_thistick = []
+
 
         # Query policy for an action.
         a_ = self.pi(dict(s=s_, z=self.z.value)).numpy()
