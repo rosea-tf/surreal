@@ -91,7 +91,7 @@ class DADS(RLAlgo):
         all_s__llhs = tf.stack(tf.split(self.q(dict(s=s, z=zs), s_, log_likelihood=True), self.config.num_denominator_samples_for_ri))
         r = all_s__llhs[0] - tf.math.reduce_logsumexp(all_s__llhs, axis=0) + \
             tf.math.log(tf.cast(self.config.num_denominator_samples_for_ri, tf.float32))
-        self.avg_ri = tf.reduce_mean(r)
+        self.ri = r
         # Update RL-algo's policy (same as π) from our batch (using intrinsic rewards).
         z_exp = np.expand_dims(samples["z"], axis=-1)
 
